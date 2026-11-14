@@ -13,9 +13,11 @@ DB_PORT := 5432
 DB_URL := jdbc:postgresql://$(DB_HOST):$(DB_PORT)/$(DB_NAME)
 
 # Docker
-COMPOSE := docker-compose
+# Compose v2 (plugin de Docker). El v1 (docker-compose 1.29, en Python) falla con Docker Engine reciente al
+# recrear contenedores creados por el v2: KeyError 'ContainerConfig'
+COMPOSE := docker compose
 COMPOSE_FILE := docker-compose.yml
-# Red creada por docker compose: <proyecto>_<red>
+# Red compartida con card-managment-service (nombre fijo en docker-compose.yml)
 DOCKER_NETWORK := card-network
 
 # Flyway

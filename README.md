@@ -136,25 +136,31 @@ CARDS ||--o{ STATE_TRANSITIONS : "transitions"CARDS {
 ## ⚡ Quick Start
 
 ### **Requisitos Previos**
-```powershellVerificar instalaciones
+```bash
 docker --version          # Docker 20.10+
-docker-compose --version  # Docker Compose 2.0+
-make --version           # GNU Make 4.0+ (opcional, pero recomendado)
+docker compose version    # Docker Compose v2 (plugin). El v1 (docker-compose) no es compatible
+make --version            # GNU Make 4.0+ (opcional, pero recomendado)
+```
 
 ### **Instalación Rápida**
-```powershell1. Clonar repositorio
+```bash
+# 1. Clonar repositorio
 git clone https://github.com/unisono/card-management-database.git
-cd card-management-database2. Levantar servicios
-docker-compose up -d postgres pgadmin3. Ejecutar migraciones
-docker-compose up flyway4. Verificar
+cd card-management-database
+# 2. Levantar servicios
+docker compose up -d postgres pgadmin
+# 3. Ejecutar migraciones
+docker compose up flyway
+# 4. Verificar
 docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\dt"
+```
 
 ### **Con Make (Recomendado)**
-```powershellLevantar todo
-make upEjecutar migraciones
-make migrate-dockerVerificar
-make psql
-card_management_db=# \dt
+```bash
+make up               # Levantar PostgreSQL y PgAdmin
+make migrate-docker   # Ejecutar migraciones
+make psql             # Verificar
+```
 
 ---
 
