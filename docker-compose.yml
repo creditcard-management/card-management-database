@@ -51,8 +51,11 @@ services:
       - card-network
 
 
+# Red compartida con deploy/docker/docker-compose.yml de card-managment-service (Kafka y los microservicios),
+# que declara la misma red con el mismo nombre fijo: el primero que se levanta la crea y el otro la reutiliza.
 networks:
   card-network:
+    name: card-network
     driver: bridge
 
 volumes:
