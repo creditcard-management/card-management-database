@@ -16,7 +16,7 @@ DB_URL := jdbc:postgresql://$(DB_HOST):$(DB_PORT)/$(DB_NAME)
 COMPOSE := docker-compose
 COMPOSE_FILE := docker-compose.yml
 # Red creada por docker compose: <proyecto>_<red>
-DOCKER_NETWORK := card-management-database_card-network
+DOCKER_NETWORK := card-network
 
 # Flyway
 FLYWAY := flyway
