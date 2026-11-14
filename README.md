@@ -176,7 +176,7 @@ make logs            # Ver logs de todos los servicios
 make logs-postgres   # Ver logs solo de PostgreSQL
 make logs-flyway     # Ver logs de Flyway
 make ps              # Ver estado de servicios
-
+```
 ### **Flyway (Migraciones)**
 ```powershellmake migrate         # Ejecutar migraciones pendientes
 make migrate-docker  # Ejecutar migraciones con Docker
@@ -184,7 +184,7 @@ make info            # Ver estado de migraciones
 make validate        # Validar migraciones
 make repair          # Reparar historial de Flyway
 make clean           # Limpiar BD ⚠️ (BORRA TODO)
-
+```
 ### **Base de Datos**
 ```powershellmake psql            # Conectar a PostgreSQL con psql
 make psql-root       # Conectar como usuario postgres
@@ -194,30 +194,31 @@ make reset-db        # Drop + Create + Migrate
 make health          # Verificar salud de PostgreSQL
 make stats           # Ver estadísticas de tablas
 make connections     # Ver conexiones activas
-
+```
 ### **Backup & Restore**
 ```powershellmake backup          # Crear backup (.dump)
 make backup-sql      # Crear backup (.sql)
 make restore BACKUP_FILE=path  # Restaurar backup
 make list-backups    # Listar backups disponibles
-
+```
 ### **Seeds (Datos de Prueba)**
 ```powershellmake seed-dev        # Cargar datos de prueba (DEV)
 make seed-staging    # Cargar datos de staging
-
+```
 ### **Mantenimiento**
 ```powershellmake vacuum          # Ejecutar VACUUM ANALYZE
 make analyze         # Actualizar estadísticas
 make clean-logs      # Limpiar logs de Docker
 make prune           # Limpiar recursos Docker no usados
-
+```
 ### **Desarrollo**
 ```powershellmake new-migration name=description    # Crear nueva migración
 make lint-migrations                   # Validar sintaxis SQL
 
----
 
+```
 ## 📂 Estructura del Proyectocard-management-database/
+```
 ├── README.md                    # Este archivo
 ├── docker-compose.yml           # Orquestación de servicios
 ├── Makefile                     # Comandos de automatización
@@ -248,11 +249,11 @@ make lint-migrations                   # Validar sintaxis SQL
 │
 └── backups/                     # Backups de BD
 └── .gitkeep
+```
 
----
 
 ## 🗂️ Migraciones
-
+```
 ### **Estructura de Migraciones**migrations/
 ├── V1__create_cards_tables.sql              (10 KB)
 │   ├── TABLE: cards
@@ -276,8 +277,13 @@ make lint-migrations                   # Validar sintaxis SQL
 ├── 3 views
 ├── 2 functions
 └── 1 trigger
+```
 
-### **Convención de Nomenclatura**V{version}__{description}.sql✅ Ejemplos correctos:
+### **Convención de Nomenclatura**V{version}__{description}.sql✅ ##
+
+### Ejemplos correctos:
+
+```
 V1__create_cards_tables.sql
 V2__create_credit_limits_tables.sql
 V3__create_state_transitions_table.sql
@@ -287,6 +293,7 @@ V1_create_cards.sql              (solo un guión bajo)
 create_cards.sql                 (sin versión)
 V1.1__create_cards.sql           (versión decimal)
 V1__Create_Cards_Tables.sql      (mayúsculas inconsistentes)
+```
 
 ### **Orden de Ejecución**
 
@@ -295,10 +302,10 @@ Flyway ejecuta las migraciones en orden numérico:V1 → V2 → V3 → V4 → ..
 Una vez ejecutada, **NUNCA** modificar una migración. Si necesitas cambios, crea una nueva:
 ```sql-- ❌ NO HACER: Modificar V1__create_cards_tables.sql-- ✅ HACER: Crear nueva migración
 V4__alter_cards_add_column_rewards.sql
-
----
+```
 
 ## 📊 Schema de Base de Datos
+
 
 ### **Tablas (6)**
 
@@ -310,6 +317,7 @@ V4__alter_cards_add_column_rewards.sql
 | `credit_limit_history` | Historial de límites | card-limits | Alto |
 | `state_transitions` | Transiciones de estado | card-lifecycle | Muy Alto |
 | `flyway_schema_history` | Control de migraciones | Flyway | Bajo |
+
 
 ### **Índices (56)**
 
@@ -341,6 +349,7 @@ WHERE status IN ('BLOCKED', 'BLOCKED_FRAUD') AND deleted = FALSE;-- Solo transic
 CREATE INDEX idx_state_transition_successful_only
 ON state_transitions(card_id, to_state, transitioned_at DESC)
 WHERE successful = TRUE;
+```
 
 ### **Foreign Keys (4)**
 ```sql-- card_audit → cards
@@ -360,6 +369,7 @@ ALTER TABLE state_transitions
 ADD CONSTRAINT fk_state_transition_card
 FOREIGN KEY (card_id) REFERENCES cards(id)
 ON DELETE CASCADE;
+```
 
 ### **Triggers (6)**
 
@@ -377,6 +387,7 @@ ON DELETE CASCADE;
 v_card_lifecycle_summary-- Transiciones fallidas recientes (últimos 30 días)
 v_recent_failed_transitions-- Estadísticas de eventos
 v_event_statistics
+```
 
 ### **Functions (8)**
 ```sql-- Trigger functions (6)
@@ -388,20 +399,20 @@ reset_monthly_limit()
 validate_state_transition()-- Utility functions (2)
 get_card_lifecycle_history(p_card_id VARCHAR)
 count_transitions_by_period(p_start_date TIMESTAMP, p_end_date TIMESTAMP)
-
----
-
+```
 ## ✅ Validación
 
 ### **Comandos de Validación**
 
 #### **1. Ver todas las tablas**
 ```powershelldocker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\dt"
+```
 
 **Output esperado:** 6 tablas
 
 #### **2. Ver todos los índices**
 ```powershelldocker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\di"
+```
 
 **Output esperado:** 56 índices
 
@@ -418,7 +429,7 @@ JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.
 WHERE tc.constraint_type = 'FOREIGN KEY'
 ORDER BY tc.table_name;
 "
-
+```
 **Output esperado:** 4 Foreign Keys
 
 #### **4. Ver Triggers**
@@ -430,7 +441,7 @@ FROM information_schema.triggers
 WHERE trigger_schema = 'public'
 ORDER BY event_object_table;
 "
-
+```
 **Output esperado:** 6 triggers
 
 #### **5. Ver historial de Flyway**
@@ -447,6 +458,7 @@ ORDER BY installed_rank;
 2       | create credit limits tables    | t       | 2025-12-28 14:50:01
 3       | create state transitions table | t       | 2025-12-28 14:50:01
 
+```
 #### **6. Resumen completo de objetos**
 ```powershelldocker exec -it card-db-postgres psql -U postgres -d card_management_db -c "
 SELECT
@@ -471,15 +483,19 @@ FROM pg_proc p
 JOIN pg_namespace n ON p.pronamespace = n.oid
 WHERE n.nspname = 'public';
 "
+```
+**Output esperado:
+```
+**object_type  | count
+---------------+-------
+Tables         |     6
+Indexes        |    56
+Foreign Keys   |     4
+Triggers       |     6
+Views          |     3
+Functions      |     8
 
-**Output esperado:**object_type  | count
---------------+-------
-Tables       |     6
-Indexes      |    56
-Foreign Keys |     4
-Triggers     |     6
-Views        |     3
-Functions    |     8
+```
 
 ### **Checklist de Validación**
 
@@ -516,6 +532,7 @@ CREATE TRIGGER trigger_update_cards_updated_at ...-- 8. Functions con snake_case
 CREATE FUNCTION update_cards_updated_at() ...-- 9. Views con prefijo v_
 CREATE VIEW v_card_lifecycle_summary AS ...
 
+```
 ### **Migraciones**
 
 1. **Nunca modificar migraciones ejecutadas**
@@ -563,7 +580,7 @@ DB_PORT=5432PgAdmin
 PGADMIN_EMAIL=admin@unisono.com
 PGADMIN_PASSWORD=admin
 
----
+```
 
 ## 💾 Backup & Restore
 
@@ -571,26 +588,24 @@ PGADMIN_PASSWORD=admin
 ```powershellBackup en formato custom (.dump) - RECOMENDADO
 make backupBackup en formato SQL (.sql)
 make backup-sqlSe guardará en: backups/backup_YYYYMMDD_HHMMSS.dump
-
+```
 ### **Restaurar Backup**
 ```powershellListar backups disponibles
 make list-backupsRestaurar
 make restore BACKUP_FILE=backups/backup_20251228_150000.dump
-
+```
 ### **Backup Automático con Cron**
 ```bashEditar crontab
 crontab -eAgregar línea (backup diario a las 2 AM)
 0 2 * * * cd /path/to/card-management-database && make backup
-
+```
 ### **Backup a S3 (AWS)**
 ```bashInstalar AWS CLI
 Configurar credenciales: aws configureCrear backup y subir a S3
 make backup
 aws s3 cp backups/backup_$(date +%Y%m%d_%H%M%S).dump 
 s3://mi-bucket/card-db-backups/
-
----
-
+```
 ## 🔧 Troubleshooting
 
 ### **Problema: "Port 5432 already in use"**
@@ -601,8 +616,7 @@ ports:
 
 "5433:5432"  # Usar 5433 externamente
 
-
----
+```
 
 ### **Problema: "Flyway migration failed"**
 ```powershell1. Ver logs detallados
@@ -613,8 +627,7 @@ docker exec -it card-db-postgres psql -U postgres -d card_management_db
 DELETE FROM flyway_schema_history WHERE version = 'X';
 \q5. Volver a ejecutar
 make migrate-docker
-
----
+```
 
 ### **Problema: "Cannot connect to database"**
 ```powershell1. Verificar que PostgreSQL esté corriendo
@@ -623,16 +636,14 @@ docker logs card-db-postgres3. Verificar health check
 docker inspect card-db-postgres | findstr Health4. Reiniciar servicios
 make restart
 
----
+```
 
 ### **Problema: "Out of disk space"**
 ```powershell1. Ver uso de volúmenes
 docker system df -v2. Limpiar recursos no usados
 make prune3. Eliminar volúmenes antiguos
 docker volume prune
-
----
-
+```
 ### **Problema: "ERROR: functions in index predicate must be marked IMMUTABLE"**
 
 Este error ocurre cuando se usan funciones como `CURRENT_DATE`, `CURRENT_TIMESTAMP`, o `EXTRACT()` en predicados `WHERE` de índices.
@@ -646,8 +657,7 @@ CREATE INDEX idx_example
 ON table(column, date_column);
 -- Mover la lógica de fecha a la query, no al índice
 
----
-
+```
 ### **Problema: "constraint already exists"**
 
 Ocurre cuando se intenta re-ejecutar una migración que ya creó constraints.
@@ -658,114 +668,12 @@ docker exec -it card-db-postgres psql -U postgres -d card_management_db
 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"Ejecutar migraciones desde cero
 make migrate-docker
 
+```
 ---
 
-## 🤝 Contribuir
-
-### **Crear Nueva Migración**
-```powershell1. Crear archivo de migración
-make new-migration name=add_card_benefits_table2. Editar el archivo generado
-migrations/V4__add_card_benefits_table.sql3. Probar localmente
-make migrate4. Validar
-make validate5. Commit
-git add migrations/V4__add_card_benefits_table.sql
-git commit -m "feat: add card benefits table"
-git push
-
-### **Workflow de Contribución**
-
-1. Crear branch: `git checkout -b feature/nueva-funcionalidad`
-2. Crear migración: `make new-migration name=descripcion`
-3. Probar: `make reset-db && make migrate`
-4. Validar: `make validate`
-5. Commit: `git commit -m "feat: descripción"`
-6. Push: `git push origin feature/nueva-funcionalidad`
-7. Crear Pull Request
-
-### **Convenciones de Commits**feat: Nueva funcionalidad
-fix: Corrección de bug
-docs: Cambios en documentación
-refactor: Refactorización sin cambios funcionales
-perf: Mejoras de performance
-test: Agregar o modificar tests
-chore: Cambios en build, CI, etc.
-
----
-
-## 📞 Soporte
-
-- **Email:** database@unisono.com
-- **Slack:** #card-database
-- **Docs:** https://docs.unisono.com/database
-- **Issues:** https://github.com/unisono/card-management-database/issues
-
----
-
-## 📊 Estadísticas del Proyecto📦 Tamaño del repositorio: ~2 MB
-📄 Migraciones: 3 archivos SQL
-🗄️ Tablas: 6
-🔑 Índices: 56
-🔗 Foreign Keys: 4
-⚡ Triggers: 6
-👁️ Views: 3
-🔧 Functions: 8
-📝 Líneas de SQL: ~1,200
-
----
-
-## 📄 Licencia
-
-Propietario - Unisono © 2025
-
-**Confidencial:** Este código es propiedad de Unisono y no puede ser distribuido sin autorización.
-
----
-
-## 🎯 Roadmap
-
-### **Q1 2025**
-- [x] Schema inicial (V1, V2, V3)
-- [ ] Datos de prueba (seeds)
-- [ ] CI/CD pipeline
-- [ ] Monitoring con Prometheus
-
-### **Q2 2025**
-- [ ] Particionamiento de tablas grandes
-- [ ] Replicación read-replica
-- [ ] Backup automático a S3
-
-### **Q3 2025**
-- [ ] Migration a PostgreSQL 17
-- [ ] Performance tuning
-- [ ] Auditoría completa
-
----
-
-## 📚 Recursos Adicionales
-
-- [PostgreSQL 16 Documentation](https://www.postgresql.org/docs/16/)
-- [Flyway Documentation](https://flywaydb.org/documentation/)
-- [Docker Compose Reference](https://docs.docker.com/compose/)
-- [SQL Style Guide](https://www.sqlstyle.guide/)
-
----
-
-**Última actualización:** 2025-12-28  
+**Última actualización:** 2026-11-14  
 **Versión:** 1.0.0  
 **Mantenedor:** Database Team - Unisono  
-**Contributors:** Juan Pérez (Backend Lead)
+**Contributors:** Juan Tevez (Backend Lead)
 
 ---
-
-## ⭐ Quick Links
-
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Comandos Disponibles](#-comandos-disponibles)
-- [Schema de Base de Datos](#-schema-de-base-de-datos)
-- [Troubleshooting](#-troubleshooting)
-
----
-
-<div align="center">
-  <strong>🚀 Card Management Database - Built with ❤️ by Unisono</strong>
-</div>
