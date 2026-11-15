@@ -11,6 +11,7 @@ Scripts SQL para poblar la base de datos con datos de prueba realistas.
 1. 001_test_cards.sql              (10 tarjetas + 5 auditorías)
 2. 002_test_credit_limits.sql      (4 límites + 8 históricos)
 3. 003_test_state_transitions.sql  (25+ transiciones)
+4. 004_test_exchange_rates.sql     (cotizaciones USD/ARS y EUR/ARS; requiere V19)
 ```
 
 ## Ejecutar Seeds
@@ -26,6 +27,7 @@ make seed-dev
 docker exec -i card-db-postgres psql -U postgres -d card_management_db < seeds/dev/001_test_cards.sql
 docker exec -i card-db-postgres psql -U postgres -d card_management_db < seeds/dev/002_test_credit_limits.sql
 docker exec -i card-db-postgres psql -U postgres -d card_management_db < seeds/dev/003_test_state_transitions.sql
+docker exec -i card-db-postgres psql -U postgres -d card_management_db < seeds/dev/004_test_exchange_rates.sql
 ```
 
 ## Datos Creados
@@ -44,6 +46,15 @@ docker exec -i card-db-postgres psql -U postgres -d card_management_db < seeds/d
 | ...008 | Sofía Ramírez | VISA | CLASSIC | ACTIVE | $20,000 |
 | ...009 | Martín Torres | MASTERCARD | GOLD | EXPIRED | - |
 | ...010 | Lucía Morales | VISA | PLATINUM | APPROVED | - |
+
+### Cotizaciones (2)
+
+| Par | Tasa | Vigencia |
+|-----|------|----------|
+| USD/ARS | 1150.50 | Desde la carga, abierta |
+| EUR/ARS | 1250.00 | Desde la carga, abierta |
+
+Solo se insertan si el par no tiene cotizaciones (en ningún sentido). ARS → USD/EUR usa la cotización inversa.
 
 ### Escenarios de Prueba
 
@@ -74,6 +85,7 @@ docker exec -i card-db-postgres psql -U postgres -d card_management_db < seeds/d
 ```bash
 # Eliminar solo datos de seeds (mantener schema)
 docker exec -it card-db-postgres psql -U postgres -d card_management_db << EOF
+DELETE FROM exchange_rates WHERE rate_id LIKE '770e8400-e29b-41d4-a716-%';
 TRUNCATE TABLE state_transitions CASCADE;
 TRUNCATE TABLE credit_limit_history CASCADE;
 TRUNCATE TABLE credit_limits CASCADE;
