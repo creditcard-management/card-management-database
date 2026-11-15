@@ -3,6 +3,11 @@
 -- Description: Datos de prueba para state_transitions
 -- =============================================
 
+-- Todo o nada: si una sentencia falla, psql corta (y make seed-dev también) y no queda nada de este archivo.
+-- No es re-ejecutable: para volver a cargar, correr antes make clean-seeds.
+\set ON_ERROR_STOP on
+BEGIN;
+
 -- =============================================
 -- STATE_TRANSITIONS - Transiciones de Estado
 -- =============================================
@@ -280,3 +285,5 @@ BEGIN
     RAISE NOTICE '   - REJECT: %', (SELECT COUNT(*) FROM state_transitions WHERE event = 'REJECT');
     RAISE NOTICE '   - CANCEL: %', (SELECT COUNT(*) FROM state_transitions WHERE event = 'CANCEL');
 END $$;
+
+COMMIT;
