@@ -277,6 +277,7 @@ seed-dev: ## Cargar datos de prueba (DEV)
 	@docker exec -i card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) < seeds/dev/001_test_cards.sql
 	@docker exec -i card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) < seeds/dev/002_test_credit_limits.sql
 	@docker exec -i card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) < seeds/dev/003_test_state_transitions.sql
+	@docker exec -i card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) < seeds/dev/004_test_exchange_rates.sql
 	@echo "$(GREEN)✅ Datos de prueba cargados$(NC)"
 
 .PHONY: seed-staging
@@ -288,6 +289,7 @@ seed-staging: ## Cargar datos de staging
 .PHONY: clean-seeds
 clean-seeds: ## Limpiar datos de seeds (mantiene schema)
 	@echo "$(YELLOW)Limpiando datos de prueba...$(NC)"
+	@docker exec -it card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) -c "DELETE FROM exchange_rates WHERE rate_id LIKE '770e8400-e29b-41d4-a716-%';"
 	@docker exec -it card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) -c "TRUNCATE TABLE state_transitions CASCADE;"
 	@docker exec -it card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) -c "TRUNCATE TABLE credit_limit_history CASCADE;"
 	@docker exec -it card-db-postgres psql -U $(DB_USER) -d $(DB_NAME) -c "TRUNCATE TABLE credit_limits CASCADE;"
