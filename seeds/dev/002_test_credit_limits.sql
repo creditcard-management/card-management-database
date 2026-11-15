@@ -3,9 +3,18 @@
 -- Description: Datos de prueba para credit_limits y credit_limit_history
 -- =============================================
 
+-- Todo o nada: si una sentencia falla, psql corta (y make seed-dev también) y no queda nada de este archivo.
+-- No es re-ejecutable: para volver a cargar, correr antes make clean-seeds.
+\set ON_ERROR_STOP on
+BEGIN;
+
 -- =============================================
 -- CREDIT_LIMITS - Límites de Crédito
 -- =============================================
+
+-- daily_limit_reset_date y monthly_limit_reset_year/_month son el día y el mes que card-limits está contando:
+-- con el día y el mes actuales, daily_limit_consumed y monthly_limit_consumed cuentan como consumo de hoy y de este
+-- mes. Quién asignó cada límite queda en credit_limit_history.changed_by.
 
 -- Límite 1: Tarjeta 1 (Juan Pérez) - Visa Gold
 INSERT INTO credit_limits (
@@ -15,8 +24,9 @@ INSERT INTO credit_limits (
     consumed_credit_amount, consumed_credit_currency,
     available_credit_amount, available_credit_currency,
     daily_limit_amount, daily_limit_currency, daily_limit_consumed, daily_limit_reset_date,
-    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed, monthly_limit_reset_date,
-    assigned_by, assigned_at, created_at, updated_at
+    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed,
+    monthly_limit_reset_year, monthly_limit_reset_month,
+    created_at, updated_at
 ) VALUES (
     '660e8400-e29b-41d4-a716-446655440001',
     '550e8400-e29b-41d4-a716-446655440001',
@@ -24,12 +34,10 @@ INSERT INTO credit_limits (
     15000.00, 'ARS',
     12500.00, 'ARS',
     37500.00, 'ARS',
-    10000.00, 'ARS', 2500.00, CURRENT_DATE + INTERVAL '1 day',
-    50000.00, 'ARS', 12500.00, DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month',
-    'admin@bank.com',
-    NOW() - INTERVAL '6 months',
-    NOW() - INTERVAL '6 months',
-    NOW()
+    10000.00, 'ARS', 2500.00, CURRENT_DATE,
+    50000.00, 'ARS', 12500.00,
+    EXTRACT(YEAR FROM CURRENT_DATE)::int, EXTRACT(MONTH FROM CURRENT_DATE)::int,
+    NOW() - INTERVAL '6 months', NOW()
 );
 
 -- Límite 2: Tarjeta 2 (María González) - Mastercard Platinum
@@ -40,8 +48,9 @@ INSERT INTO credit_limits (
     consumed_credit_amount, consumed_credit_currency,
     available_credit_amount, available_credit_currency,
     daily_limit_amount, daily_limit_currency, daily_limit_consumed, daily_limit_reset_date,
-    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed, monthly_limit_reset_date,
-    assigned_by, assigned_at, created_at, updated_at
+    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed,
+    monthly_limit_reset_year, monthly_limit_reset_month,
+    created_at, updated_at
 ) VALUES (
     '660e8400-e29b-41d4-a716-446655440002',
     '550e8400-e29b-41d4-a716-446655440002',
@@ -49,15 +58,13 @@ INSERT INTO credit_limits (
     30000.00, 'ARS',
     5000.00, 'ARS',
     95000.00, 'ARS',
-    20000.00, 'ARS', 1000.00, CURRENT_DATE + INTERVAL '1 day',
-    100000.00, 'ARS', 5000.00, DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month',
-    'admin@bank.com',
-    NOW() - INTERVAL '1 year',
-    NOW() - INTERVAL '1 year',
-    NOW()
+    20000.00, 'ARS', 1000.00, CURRENT_DATE,
+    100000.00, 'ARS', 5000.00,
+    EXTRACT(YEAR FROM CURRENT_DATE)::int, EXTRACT(MONTH FROM CURRENT_DATE)::int,
+    NOW() - INTERVAL '1 year', NOW()
 );
 
--- Límite 3: Tarjeta 3 (Carlos Rodríguez) - Visa Classic (Bloqueada)
+-- Límite 3: Tarjeta 3 (Carlos Rodríguez) - Visa Classic (Bloqueada, casi consumido completamente)
 INSERT INTO credit_limits (
     id, card_id,
     purchase_limit_amount, purchase_limit_currency,
@@ -65,19 +72,20 @@ INSERT INTO credit_limits (
     consumed_credit_amount, consumed_credit_currency,
     available_credit_amount, available_credit_currency,
     daily_limit_amount, daily_limit_currency, daily_limit_consumed, daily_limit_reset_date,
-    assigned_by, assigned_at, created_at, updated_at
+    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed,
+    monthly_limit_reset_year, monthly_limit_reset_month,
+    created_at, updated_at
 ) VALUES (
     '660e8400-e29b-41d4-a716-446655440003',
     '550e8400-e29b-41d4-a716-446655440003',
     30000.00, 'ARS',
     9000.00, 'ARS',
-    28500.00, 'ARS',  -- Casi consumido completamente
+    28500.00, 'ARS',
     1500.00, 'ARS',
-    5000.00, 'ARS', 5000.00, CURRENT_DATE + INTERVAL '1 day',
-    'admin@bank.com',
-    NOW() - INTERVAL '3 months',
-    NOW() - INTERVAL '3 months',
-    NOW() - INTERVAL '15 days'
+    5000.00, 'ARS', 5000.00, CURRENT_DATE,
+    30000.00, 'ARS', 28500.00,
+    EXTRACT(YEAR FROM CURRENT_DATE)::int, EXTRACT(MONTH FROM CURRENT_DATE)::int,
+    NOW() - INTERVAL '3 months', NOW() - INTERVAL '15 days'
 );
 
 -- Límite 4: Tarjeta 8 (Sofía Ramírez) - Visa Classic (Cliente joven)
@@ -88,8 +96,9 @@ INSERT INTO credit_limits (
     consumed_credit_amount, consumed_credit_currency,
     available_credit_amount, available_credit_currency,
     daily_limit_amount, daily_limit_currency, daily_limit_consumed, daily_limit_reset_date,
-    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed, monthly_limit_reset_date,
-    assigned_by, assigned_at, created_at, updated_at
+    monthly_limit_amount, monthly_limit_currency, monthly_limit_consumed,
+    monthly_limit_reset_year, monthly_limit_reset_month,
+    created_at, updated_at
 ) VALUES (
     '660e8400-e29b-41d4-a716-446655440008',
     '550e8400-e29b-41d4-a716-446655440008',
@@ -97,12 +106,10 @@ INSERT INTO credit_limits (
     6000.00, 'ARS',
     3500.00, 'ARS',
     16500.00, 'ARS',
-    3000.00, 'ARS', 500.00, CURRENT_DATE + INTERVAL '1 day',
-    20000.00, 'ARS', 3500.00, DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month',
-    'system@bank.com',
-    NOW() - INTERVAL '4 months',
-    NOW() - INTERVAL '4 months',
-    NOW()
+    3000.00, 'ARS', 500.00, CURRENT_DATE,
+    20000.00, 'ARS', 3500.00,
+    EXTRACT(YEAR FROM CURRENT_DATE)::int, EXTRACT(MONTH FROM CURRENT_DATE)::int,
+    NOW() - INTERVAL '4 months', NOW()
 );
 
 -- =============================================
@@ -275,3 +282,5 @@ BEGIN
     RAISE NOTICE '   - Tarjeta 3 (Carlos): $30,000 ARS (95%% consumido)';
     RAISE NOTICE '   - Tarjeta 8 (Sofía): $20,000 ARS (17.5%% consumido)';
 END $$;
+
+COMMIT;
