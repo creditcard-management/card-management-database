@@ -1,4 +1,4 @@
-markdown# 🗄️ Card Management Database
+# 🗄️ Card Management Database
 
 Repositorio centralizado de migraciones y schema de base de datos para el **Sistema de Gestión de Tarjetas**.
 
