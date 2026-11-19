@@ -1,6 +1,12 @@
--- V3: Crear tablas de transiciones de estado e historial de límites
+-- =============================================
+-- Migration: V3
+-- Description: card state transitions (card-lifecycle), credit limit history (card-limits)
+--              and card audit
+-- =============================================
 
--- Tabla de transiciones de estado (card-lifecycle)
+-- ==========================================
+-- STATE TRANSITIONS (card-lifecycle)
+-- ==========================================
 CREATE TABLE state_transitions (
     id BIGSERIAL PRIMARY KEY,
     card_id VARCHAR(36) NOT NULL,
@@ -12,21 +18,34 @@ CREATE TABLE state_transitions (
     transitioned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     successful BOOLEAN NOT NULL DEFAULT true,
     error_message TEXT,
-    metadata TEXT
+    metadata TEXT,
+    -- card-lifecycle registra las transiciones exitosas consumiendo los eventos card.* (at-least-once):
+    -- el eventId del mensaje identifica cada fila y evita registrarla dos veces. NULL en las fallidas.
+    event_id VARCHAR(36),
+
+    CONSTRAINT fk_state_transitions_card
+        FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
--- Índices para state_transitions
 CREATE INDEX idx_state_transitions_card_id ON state_transitions(card_id, transitioned_at DESC);
 CREATE INDEX idx_state_transitions_event ON state_transitions(event, transitioned_at DESC);
 CREATE INDEX idx_state_transitions_successful ON state_transitions(successful, transitioned_at DESC);
 CREATE INDEX idx_state_transitions_performed_by ON state_transitions(performed_by, transitioned_at DESC);
 CREATE INDEX idx_state_transitions_metadata ON state_transitions (metadata DESC);
 
--- Foreign key
-ALTER TABLE state_transitions ADD CONSTRAINT fk_state_transitions_card
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE ON UPDATE CASCADE;
+-- Una sola transición CREATE por tarjeta (consumo idempotente de card.created)
+CREATE UNIQUE INDEX uq_state_transitions_create ON state_transitions (card_id)
+    WHERE event = 'CREATE';
 
--- Tabla de historial de cambios de límites (card-limits)
+-- Varios NULL permitidos; un mismo evento, una sola fila
+CREATE UNIQUE INDEX uq_state_transitions_event_id ON state_transitions (event_id);
+
+COMMENT ON TABLE state_transitions IS 'Historial de transiciones de estado de tarjetas';
+COMMENT ON COLUMN state_transitions.event_id IS 'eventId del evento card.* que originó la transición (NULL en fallidas)';
+
+-- ==========================================
+-- CREDIT LIMIT HISTORY (card-limits)
+-- ==========================================
 CREATE TABLE credit_limit_history (
     id BIGSERIAL PRIMARY KEY,
     credit_limit_id VARCHAR(36) NOT NULL,
@@ -43,10 +62,20 @@ CREATE TABLE credit_limit_history (
     changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     successful BOOLEAN NOT NULL DEFAULT true,
     error_message VARCHAR(500),
-    metadata TEXT  -- ✅ TEXT en lugar de JSONB
+    metadata TEXT,
+
+    CONSTRAINT fk_history_credit_limit
+        FOREIGN KEY (credit_limit_id) REFERENCES credit_limits(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT chk_limit_type
+        CHECK (limit_type IN ('PURCHASE', 'CASH_ADVANCE', 'DAILY', 'MONTHLY')),
+    CONSTRAINT chk_action
+        CHECK (action IN ('ASSIGNED', 'INCREASED', 'DECREASED', 'UPDATED', 'CONSUMED', 'RELEASED')),
+    CONSTRAINT chk_successful_has_values
+        CHECK (successful = false OR (successful = true AND new_value_amount IS NOT NULL AND new_value_currency IS NOT NULL)),
+    CONSTRAINT chk_failed_has_error
+        CHECK (successful = true OR (successful = false AND error_message IS NOT NULL))
 );
 
--- Índices para credit_limit_history
 CREATE INDEX idx_history_credit_limit_id ON credit_limit_history(credit_limit_id, changed_at DESC);
 CREATE INDEX idx_history_limit_type ON credit_limit_history(limit_type, changed_at DESC);
 CREATE INDEX idx_history_action ON credit_limit_history(action, changed_at DESC);
@@ -62,24 +91,11 @@ CREATE UNIQUE INDEX idx_history_unique_change
     ON credit_limit_history(credit_limit_id, limit_type, action, changed_at, new_value_amount)
     WHERE successful = true;
 
--- Foreign key
-ALTER TABLE credit_limit_history ADD CONSTRAINT fk_history_credit_limit
-    FOREIGN KEY (credit_limit_id) REFERENCES credit_limits(id) ON DELETE CASCADE ON UPDATE CASCADE;
+COMMENT ON TABLE credit_limit_history IS 'Historial de cambios en límites de crédito';
 
--- Constraints
-ALTER TABLE credit_limit_history ADD CONSTRAINT chk_limit_type
-    CHECK (limit_type IN ('PURCHASE', 'CASH_ADVANCE', 'DAILY', 'MONTHLY'));
-
-ALTER TABLE credit_limit_history ADD CONSTRAINT chk_action
-    CHECK (action IN ('ASSIGNED', 'INCREASED', 'DECREASED', 'UPDATED', 'CONSUMED', 'RELEASED'));
-
-ALTER TABLE credit_limit_history ADD CONSTRAINT chk_successful_has_values
-    CHECK (successful = false OR (successful = true AND new_value_amount IS NOT NULL AND new_value_currency IS NOT NULL));
-
-ALTER TABLE credit_limit_history ADD CONSTRAINT chk_failed_has_error
-    CHECK (successful = true OR (successful = false AND error_message IS NOT NULL));
-
--- Auditoría adicional
+-- ==========================================
+-- CARD AUDIT
+-- ==========================================
 CREATE TABLE card_audit (
     id BIGSERIAL PRIMARY KEY,
     card_id VARCHAR(36) NOT NULL,
@@ -96,7 +112,4 @@ CREATE TABLE card_audit (
 CREATE INDEX idx_card_audit_card_id ON card_audit(card_id, changed_at DESC);
 CREATE INDEX idx_card_audit_entity ON card_audit(entity_name, action, changed_at DESC);
 
--- Comentarios
-COMMENT ON TABLE state_transitions IS 'Historial de transiciones de estado de tarjetas';
-COMMENT ON TABLE credit_limit_history IS 'Historial de cambios en límites de crédito';
 COMMENT ON TABLE card_audit IS 'Auditoría completa de todas las operaciones';

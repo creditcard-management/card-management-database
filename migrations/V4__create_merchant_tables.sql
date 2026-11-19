@@ -1,5 +1,7 @@
--- V1__Initial_Schema.sql
--- Initial database schema for Merchant Management
+-- =============================================
+-- Migration: V4
+-- Description: merchant management (merchants, payment terminals and contracts)
+-- =============================================
 
 -- ==========================================
 -- MERCHANTS TABLE

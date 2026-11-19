@@ -13,18 +13,17 @@ Repositorio centralizado de migraciones y schema de base de datos para el **Sist
 
 - [Descripción](#-descripción)
 - [Tecnologías](#-tecnologías)
-- [Arquitectura](#-arquitectura)
+- [Arquitectura](#️-arquitectura)
 - [Quick Start](#-quick-start)
-- [Comandos Disponibles](#-comandos-disponibles)
+- [Comandos Disponibles](#️-comandos-disponibles)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Migraciones](#-migraciones)
+- [Migraciones](#️-migraciones)
 - [Schema de Base de Datos](#-schema-de-base-de-datos)
 - [Validación](#-validación)
 - [Convenciones](#-convenciones)
 - [Ambientes](#-ambientes)
 - [Backup & Restore](#-backup--restore)
 - [Troubleshooting](#-troubleshooting)
-- [Contribuir](#-contribuir)
 
 ---
 
@@ -36,9 +35,9 @@ Este repositorio contiene:
 - ✅ **Schema completo** para el sistema de gestión de tarjetas
 - ✅ **Docker Compose** para levantar entorno completo
 - ✅ **Scripts de automatización** con Makefile
-- ✅ **Documentación** de todas las tablas, índices, constraints y triggers
+- ✅ **Seeds** de datos de prueba para desarrollo y staging
 
-**Separación de responsabilidades:** Este repositorio maneja **SOLO** el schema de base de datos. La aplicación Java está en el repositorio `card-management-service`.
+**Separación de responsabilidades:** Este repositorio maneja **SOLO** el schema de base de datos. Las aplicaciones Java están en el repositorio `card-management-service`.
 
 ---
 
@@ -57,88 +56,72 @@ Este repositorio contiene:
 
 ## 🏗️ Arquitectura
 
-### **Módulos del Sistema**
+### **Tablas por servicio**
+
+Una sola base (`card_management_db`, schema `public`) compartida por los servicios. Cada tabla pertenece a un servicio:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│       card-management-database (PostgreSQL)         │
-│                                                     │
-│  ┌─────────────────────────────────────────────┐    │
-│  │  Schema: public                             │    │
-│  │                                             │    │
-│  │  TABLES (6):                                │    │
-│  │  ├── cards (V1)                             │    │
-│  │  ├── card_audit (V1)                        │    │
-│  │  ├── credit_limits (V2)                     │    │
-│  │  ├── credit_limit_history (V2)              │    │
-│  │  ├── state_transitions (V3)                 │    │
-│  │  └── flyway_schema_history                  │    │
-│  │                                             │    │
-│  │  INDEXES (56):                              │    │
-│  │  ├── B-Tree indexes (54)                    │    │
-│  │  └── GIN full-text search (2)               │    │
-│  │                                             │    │
-│  │  FOREIGN KEYS (4):                          │    │
-│  │  ├── card_audit → cards                     │    │
-│  │  ├── credit_limits → cards                  │    │
-│  │  ├── credit_limit_history → credit_limits   │    │
-│  │  └── state_transitions → cards              │    │
-│  │                                             │    │
-│  │  TRIGGERS (6):                              │    │
-│  │  ├── update_cards_updated_at                │    │
-│  │  ├── update_credit_limits_updated_at        │    │
-│  │  ├── calculate_available_credit             │    │
-│  │  ├── reset_daily_limit                      │    │
-│  │  ├── reset_monthly_limit                    │    │
-│  │  └── validate_state_transition              │    │
-│  │                                             │    │
-│  │  ️ VIEWS (3):                                │    │
-│  │  ├── v_card_lifecycle_summary               │    │
-│  │  ├── v_recent_failed_transitions            │    │
-│  │  └── v_event_statistics                     │    │
-│  │                                             │    │
-│  │  FUNCTIONS (8):                             │    │
-│  │  ├── get_card_lifecycle_history()           │    │
-│  │  ├── count_transitions_by_period()          │    │
-│  │  └── ... (+ 6 trigger functions)            │    │
-│  └─────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────┘
+card_management_db (PostgreSQL 16) — schema public
+│
+├── card-data
+│   ├── cards                         (V1)
+│   ├── card_audit                    (V3)
+│   ├── outbox_events                 (V7)
+│   └── card_data_processed_events    (V8)
+│
+├── card-limits
+│   ├── credit_limits                 (V2)
+│   ├── credit_limit_history          (V3)
+│   ├── credit_operations             (V6)
+│   └── credit_limit_outbox_events    (V7)
+│
+├── card-lifecycle
+│   └── state_transitions             (V3)
+│
+├── merchant
+│   ├── merchants                     (V4)
+│   ├── payment_terminals             (V4)
+│   ├── terminal_accepted_brands      (V4)
+│   ├── terminal_allowed_ips          (V4)
+│   └── merchant_contracts            (V4)
+│
+├── payment-processing
+│   ├── transactions                  (V5)
+│   ├── transaction_items             (V5)
+│   ├── transaction_receipts          (V5)
+│   ├── payment_credit_operations     (V6)
+│   └── payment_outbox_events         (V7)
+│
+├── card-currency
+│   ├── currencies                    (V9)
+│   └── exchange_rates                (V9)
+│
+└── flyway_schema_history             (Flyway)
 ```
+
+Toda la lógica (cálculo de crédito disponible, validación de transiciones, `updated_at`, etc.) vive en los servicios: el schema **no tiene triggers, views ni functions**. Sí tiene constraints (`CHECK`, `UNIQUE`, `FOREIGN KEY`) que protegen la consistencia de los datos.
 
 ### **Relaciones entre Tablas**
 
 ```mermaid
 erDiagram
-    CARDS ||--o{ CARD_AUDIT : "audits"
     CARDS ||--o| CREDIT_LIMITS : "has"
-    CREDIT_LIMITS ||--o{ CREDIT_LIMIT_HISTORY : "tracks"
     CARDS ||--o{ STATE_TRANSITIONS : "transitions"
-
-    CARDS {
-        varchar id PK
-        varchar client_id
-        varchar status
-        text card_number_encrypted
-        text cvv_encrypted
-        varchar pin_hash
-    }
-
-    CREDIT_LIMITS {
-        varchar id PK
-        varchar card_id FK
-        decimal purchase_limit_amount
-        decimal available_credit_amount
-    }
-
-    STATE_TRANSITIONS {
-        bigint id PK
-        varchar card_id FK
-        varchar from_state
-        varchar to_state
-        varchar event
-        boolean successful
-    }
+    CARDS ||--o{ TRANSACTIONS : "pays"
+    CREDIT_LIMITS ||--o{ CREDIT_LIMIT_HISTORY : "tracks"
+    CREDIT_LIMITS ||--o{ CREDIT_OPERATIONS : "moves"
+    MERCHANTS ||--o{ PAYMENT_TERMINALS : "owns"
+    MERCHANTS ||--o| MERCHANT_CONTRACTS : "signs"
+    MERCHANTS ||--o{ TRANSACTIONS : "charges"
+    PAYMENT_TERMINALS ||--o{ TERMINAL_ACCEPTED_BRANDS : "accepts"
+    PAYMENT_TERMINALS ||--o{ TERMINAL_ALLOWED_IPS : "allows"
+    TRANSACTIONS ||--o{ TRANSACTION_ITEMS : "contains"
+    TRANSACTIONS ||--o| TRANSACTION_RECEIPTS : "receipt"
+    TRANSACTIONS ||--o{ TRANSACTIONS : "refunds"
+    CURRENCIES ||--o{ EXCHANGE_RATES : "quotes"
 ```
+
+Sin FK (a propósito): `card_audit`, las tablas de outbox, `card_data_processed_events`, `payment_credit_operations` (la transacción puede no haberse guardado nunca) y `transactions.exchange_rate_id` (la cotización es de otro servicio).
 
 ---
 
@@ -174,6 +157,7 @@ docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\dt"
 ```bash
 make up               # Levantar PostgreSQL y PgAdmin
 make migrate-docker   # Ejecutar migraciones
+make seed-dev         # Cargar datos de prueba (opcional)
 make psql             # Verificar
 ```
 
@@ -233,7 +217,10 @@ make list-backups               # Listar backups disponibles
 ```bash
 make seed-dev        # Cargar datos de prueba (DEV)
 make seed-staging    # Cargar datos de staging
+make clean-seeds     # Borrar datos de seeds (mantiene schema)
 ```
+
+Detalle de los seeds de desarrollo en [`seeds/dev/README.md`](seeds/dev/README.md).
 
 ### **Mantenimiento**
 
@@ -259,24 +246,33 @@ make lint-migrations                   # Validar sintaxis SQL
 card-management-database/
 ├── README.md                    # Este archivo
 ├── docker-compose.yml           # Orquestación de servicios
+├── Dockerfile                   # Imagen de Flyway con migraciones y configuración
+├── flyway.conf                  # Configuración de Flyway
 ├── Makefile                     # Comandos de automatización
 ├── .gitignore                   # Archivos ignorados por Git
-├── .env.example                 # Variables de entorno (template)
 │
-├── migrations/                  # ⭐ Migraciones de Flyway
-│   ├── V1__create_cards_tables.sql
-│   ├── V2__create_credit_limits_tables.sql
-│   └── V3__create_state_transitions_table.sql
+├── .github/workflows/
+│   └── flyway-migrate.yml       # CI: migrate + validate sobre PostgreSQL limpio
+│
+├── migrations/                  # ⭐ Migraciones de Flyway (V1 a V9)
+│
+├── rollback/                    # Scripts de rollback manual (R{n}__rollback_v{version}.sql)
 │
 ├── seeds/                       # Datos de prueba
 │   ├── dev/
 │   │   ├── 001_test_cards.sql
-│   │   └── 002_test_limits.sql
-│   └── staging/
-│       └── 001_staging_data.sql
+│   │   ├── 002_test_credit_limits.sql
+│   │   ├── 003_test_state_transitions.sql
+│   │   ├── 004_test_exchange_rates.sql
+│   │   └── README.md
+│   ├── staging/
+│   │   └── 001_staging_data.sql
+│   └── prod/
+│       └── README.md
 │
 ├── scripts/                     # Scripts útiles
 │   ├── create_database.sh
+│   ├── drop_database.sh
 │   ├── backup.sh
 │   └── restore.sh
 │
@@ -285,8 +281,7 @@ card-management-database/
 │   ├── migration_guide.md
 │   └── rollback_guide.md
 │
-└── backups/                     # Backups de BD
-    └── .gitkeep
+└── backups/                     # Backups de BD (ignorado por Git)
 ```
 
 ---
@@ -295,31 +290,51 @@ card-management-database/
 
 ### **Estructura de Migraciones**
 
+Cada migración crea las tablas de un dominio con su forma final: columnas, constraints, índices y comentarios en el mismo `CREATE`.
+
 ```
 migrations/
-├── V1__create_cards_tables.sql              (10 KB)
-│   ├── TABLE: cards
-│   ├── TABLE: card_audit
-│   ├── FK: card_audit → cards
-│   ├── 16 índices
-│   └── 1 trigger
+├── V1__create_cards_table.sql                       card-data
+│   └── cards                       (4 CHECK, 5 índices)
 │
-├── V2__create_credit_limits_tables.sql      (12 KB)
-│   ├── TABLE: credit_limits
-│   ├── TABLE: credit_limit_history
-│   ├── FK: credit_limits → cards
-│   ├── FK: credit_limit_history → credit_limits
-│   ├── 16 índices
-│   └── 4 triggers
+├── V2__create_credit_limits_table.sql               card-limits
+│   └── credit_limits               (FK → cards, 4 CHECK, 4 índices)
 │
-└── V3__create_state_transitions_table.sql   (8 KB)
-    ├── TABLE: state_transitions
-    ├── FK: state_transitions → cards
-    ├── 16 índices
-    ├── 3 views
-    ├── 2 functions
-    └── 1 trigger
+├── V3__create_history_and_audit_tables.sql
+│   ├── state_transitions           (FK → cards, 7 índices)
+│   ├── credit_limit_history        (FK → credit_limits, 4 CHECK, 8 índices)
+│   └── card_audit                  (2 índices)
+│
+├── V4__create_merchant_tables.sql                   merchant
+│   ├── merchants
+│   ├── payment_terminals           (FK → merchants)
+│   ├── terminal_accepted_brands    (FK → payment_terminals)
+│   ├── terminal_allowed_ips        (FK → payment_terminals)
+│   └── merchant_contracts          (FK → merchants)
+│
+├── V5__create_transaction_tables.sql                payment-processing
+│   ├── transactions                (FK → cards, merchants, transactions)
+│   ├── transaction_items           (FK → transactions)
+│   └── transaction_receipts        (FK → transactions)
+│
+├── V6__create_credit_operations_tables.sql
+│   ├── credit_operations           (FK → credit_limits)     card-limits
+│   └── payment_credit_operations                            payment-processing
+│
+├── V7__create_outbox_tables.sql
+│   ├── outbox_events                                        card-data
+│   ├── payment_outbox_events                                payment-processing
+│   └── credit_limit_outbox_events                           card-limits
+│
+├── V8__create_card_data_processed_events_table.sql  card-data
+│   └── card_data_processed_events
+│
+└── V9__create_currency_tables.sql                   card-currency
+    ├── currencies                  (+ ARS, USD, EUR)
+    └── exchange_rates              (FK → currencies)
 ```
+
+> **Nota:** el historial se consolidó en estas 9 migraciones durante la etapa de desarrollo (antes eran V1 a V21 con `ALTER`s encadenados). Una base creada con las migraciones anteriores no valida contra estas: hay que recrearla (`make down-volumes && make up && make migrate-docker`). De acá en adelante, los cambios van **siempre** en migraciones nuevas.
 
 ### **Convención de Nomenclatura**
 
@@ -330,11 +345,10 @@ V{version}__{description}.sql
 #### ✅ Ejemplos correctos
 
 ```
-V1__create_cards_tables.sql
-V2__create_credit_limits_tables.sql
-V3__create_state_transitions_table.sql
-V4__add_benefits_table.sql
-V5__alter_cards_add_indexes.sql
+V1__create_cards_table.sql
+V2__create_credit_limits_table.sql
+V10__add_benefits_table.sql
+V11__alter_cards_add_column_rewards.sql
 ```
 
 #### ❌ Ejemplos incorrectos
@@ -348,136 +362,120 @@ V1__Create_Cards_Tables.sql      (mayúsculas inconsistentes)
 
 ### **Orden de Ejecución**
 
-Flyway ejecuta las migraciones en orden numérico: `V1 → V2 → V3 → V4 → ...`
+Flyway ejecuta las migraciones en orden numérico: `V1 → V2 → V3 → ... → V9 → V10 → ...`
 
 Una vez ejecutada, **NUNCA** modificar una migración. Si necesitas cambios, crea una nueva:
 
 ```sql
--- ❌ NO HACER: Modificar V1__create_cards_tables.sql
+-- ❌ NO HACER: Modificar V1__create_cards_table.sql
 -- ✅ HACER: Crear nueva migración
-V4__alter_cards_add_column_rewards.sql
+V10__alter_cards_add_column_rewards.sql
 ```
 
 ---
 
 ## 📊 Schema de Base de Datos
 
-### **Tablas (6)**
+### **Tablas (22)**
 
-| Tabla | Propósito | Módulo | Registros (estimado) |
-|-------|-----------|--------|----------------------|
-| `cards` | Tarjetas de crédito/débito | card-data | Alto (millones) |
-| `card_audit` | Auditoría de cambios | card-data | Muy Alto |
-| `credit_limits` | Límites de crédito | card-limits | Alto (1:1 con cards) |
-| `credit_limit_history` | Historial de límites | card-limits | Alto |
-| `state_transitions` | Transiciones de estado | card-lifecycle | Muy Alto |
-| `flyway_schema_history` | Control de migraciones | Flyway | Bajo |
+| Tabla | Propósito | Servicio | Migración |
+|-------|-----------|----------|-----------|
+| `cards` | Tarjetas de crédito/débito | card-data | V1 |
+| `card_audit` | Auditoría de cambios | card-data | V3 |
+| `outbox_events` | Outbox de eventos `card.*` | card-data | V7 |
+| `card_data_processed_events` | Eventos ya consumidos (deduplicación) | card-data | V8 |
+| `credit_limits` | Límites, consumo, adelantos y saldo a favor | card-limits | V2 |
+| `credit_limit_history` | Historial de cambios de límites | card-limits | V3 |
+| `credit_operations` | Movimientos de crédito idempotentes | card-limits | V6 |
+| `credit_limit_outbox_events` | Outbox de eventos `credit-limit.*` | card-limits | V7 |
+| `state_transitions` | Transiciones de estado de tarjetas | card-lifecycle | V3 |
+| `merchants` | Comercios | merchant | V4 |
+| `payment_terminals` | Terminales de pago (POS, virtual, mobile) | merchant | V4 |
+| `terminal_accepted_brands` | Marcas aceptadas por terminal | merchant | V4 |
+| `terminal_allowed_ips` | IPs permitidas por terminal | merchant | V4 |
+| `merchant_contracts` | Contratos de comercio | merchant | V4 |
+| `transactions` | Transacciones (compras, devoluciones, etc.) | payment-processing | V5 |
+| `transaction_items` | Ítems de una transacción | payment-processing | V5 |
+| `transaction_receipts` | Comprobantes | payment-processing | V5 |
+| `payment_credit_operations` | Saga de operaciones de crédito pedidas a card-limits | payment-processing | V6 |
+| `payment_outbox_events` | Outbox de eventos de pagos | payment-processing | V7 |
+| `currencies` | Monedas aceptadas | card-currency | V9 |
+| `exchange_rates` | Cotizaciones por par con vigencia | card-currency | V9 |
+| `flyway_schema_history` | Control de migraciones | Flyway | — |
 
-### **Índices (56)**
+### **Índices (96)**
 
-**Desglose por tabla:**
+Incluye las PKs, los `UNIQUE` y los 2 de `flyway_schema_history`. 20 son índices parciales (con `WHERE`).
 
-| Tabla | Índices | Detalles |
-|-------|---------|----------|
-| `cards` | 16 | B-Tree (15) + GIN full-text (1) |
-| `state_transitions` | 16 | B-Tree (15) + GIN full-text (1) |
-| `credit_limit_history` | 9 | B-Tree (9), incluye UNIQUE |
-| `credit_limits` | 7 | B-Tree (7), incluye UNIQUE |
-| `card_audit` | 4 | B-Tree (4) |
-| `flyway_schema_history` | 2 | B-Tree (2) |
-| **PKs** | 2 | Automáticos |
+| Tabla | Índices | | Tabla | Índices |
+|-------|---------|-|-------|---------|
+| `credit_limit_history` | 9 | | `payment_outbox_events` | 5 |
+| `state_transitions` | 8 | | `transaction_receipts` | 5 |
+| `transactions` | 8 | | `card_audit` | 3 |
+| `merchants` | 7 | | `exchange_rates` | 3 |
+| `cards` | 6 | | `payment_credit_operations` | 3 |
+| `credit_limits` | 6 | | `card_data_processed_events` | 2 |
+| `outbox_events` | 6 | | `credit_operations` | 2 |
+| `payment_terminals` | 6 | | `flyway_schema_history` | 2 |
+| `credit_limit_outbox_events` | 5 | | `transaction_items` | 2 |
+| `merchant_contracts` | 5 | | `currencies`, `terminal_accepted_brands`, `terminal_allowed_ips` | 1 c/u |
 
-**Tipos de índices:**
-
-- **B-Tree (54):** Índices estándar para búsquedas rápidas
-- **GIN (2):** Full-text search en `cards.holder_*` y `state_transitions.error_message`
-
-**Índices parciales (con WHERE):**
-
-```sql
--- Solo tarjetas activas
-CREATE INDEX idx_cards_active
-ON cards(client_id, created_at DESC)
-WHERE status = 'ACTIVE' AND deleted = FALSE;
-
--- Solo tarjetas bloqueadas
-CREATE INDEX idx_cards_blocked
-ON cards(blocked_at DESC)
-WHERE status IN ('BLOCKED', 'BLOCKED_FRAUD') AND deleted = FALSE;
-
--- Solo transiciones exitosas
-CREATE INDEX idx_state_transition_successful_only
-ON state_transitions(card_id, to_state, transitioned_at DESC)
-WHERE successful = TRUE;
-```
-
-### **Foreign Keys (4)**
+**Índices parciales (ejemplos):**
 
 ```sql
--- card_audit → cards
-ALTER TABLE card_audit
-ADD CONSTRAINT fk_audit_card
-FOREIGN KEY (card_id) REFERENCES cards(id)
-ON DELETE CASCADE;
+-- Tarjetas no eliminadas
+CREATE INDEX idx_cards_client_id ON cards(client_id) WHERE deleted = false;
 
--- credit_limits → cards
-ALTER TABLE credit_limits
-ADD CONSTRAINT fk_credit_limit_card
-FOREIGN KEY (card_id) REFERENCES cards(id)
-ON DELETE CASCADE;
+-- Lo que lee el relay del outbox: pendientes que no fallaron de forma permanente
+CREATE INDEX idx_outbox_events_pending ON outbox_events (id)
+    WHERE published_at IS NULL AND failed_at IS NULL;
 
--- credit_limit_history → credit_limits
-ALTER TABLE credit_limit_history
-ADD CONSTRAINT fk_history_credit_limit
-FOREIGN KEY (credit_limit_id) REFERENCES credit_limits(id)
-ON DELETE CASCADE;
+-- Una sola transición CREATE por tarjeta (consumo idempotente de card.created)
+CREATE UNIQUE INDEX uq_state_transitions_create ON state_transitions (card_id)
+    WHERE event = 'CREATE';
 
--- state_transitions → cards
-ALTER TABLE state_transitions
-ADD CONSTRAINT fk_state_transition_card
-FOREIGN KEY (card_id) REFERENCES cards(id)
-ON DELETE CASCADE;
+-- Una sola cotización abierta por par
+CREATE UNIQUE INDEX uq_exchange_rates_open_pair
+    ON exchange_rates (base_currency, quote_currency) WHERE valid_to IS NULL;
 ```
 
-### **Triggers (6)**
+### **Foreign Keys (15)**
 
-| Trigger | Tabla | Función | Propósito |
-|---------|-------|---------|-----------|
-| `trigger_update_cards_updated_at` | cards | BEFORE UPDATE | Auto-actualizar `updated_at` |
-| `trigger_update_credit_limits_updated_at` | credit_limits | BEFORE UPDATE | Auto-actualizar `updated_at` |
-| `trigger_calculate_available_credit` | credit_limits | BEFORE INSERT/UPDATE | Calcular crédito disponible |
-| `trigger_reset_daily_limit` | credit_limits | BEFORE UPDATE | Resetear límite diario |
-| `trigger_reset_monthly_limit` | credit_limits | BEFORE UPDATE | Resetear límite mensual |
-| `trigger_validate_state_transition` | state_transitions | BEFORE INSERT | Validar transición lógica |
+| Tabla | Referencia | ON DELETE |
+|-------|------------|-----------|
+| `credit_limits` | `cards` | CASCADE |
+| `state_transitions` | `cards` | CASCADE |
+| `credit_limit_history` | `credit_limits` | CASCADE |
+| `credit_operations` | `credit_limits` | NO ACTION |
+| `payment_terminals` | `merchants` | CASCADE |
+| `merchant_contracts` | `merchants` | CASCADE |
+| `terminal_accepted_brands` | `payment_terminals` | CASCADE |
+| `terminal_allowed_ips` | `payment_terminals` | CASCADE |
+| `transactions` | `cards` | RESTRICT |
+| `transactions` | `merchants` | RESTRICT |
+| `transactions` (`original_transaction_id`) | `transactions` | RESTRICT |
+| `transaction_items` | `transactions` | CASCADE |
+| `transaction_receipts` | `transactions` | CASCADE |
+| `exchange_rates` (`base_currency`) | `currencies` | NO ACTION |
+| `exchange_rates` (`quote_currency`) | `currencies` | NO ACTION |
 
-### **Views (3)**
+### **Check Constraints (25)**
 
-```sql
--- Resumen del ciclo de vida por tarjeta
-v_card_lifecycle_summary
+| Tabla | Constraints |
+|-------|-------------|
+| `cards` | `chk_status`, `chk_type`, `chk_category`, `chk_pin_failed_attempts` |
+| `credit_limits` | `chk_monthly_reset_month`, `chk_consumed_not_negative`, `chk_cash_advance_consumed`, `chk_credit_balance` |
+| `credit_limit_history` | `chk_limit_type`, `chk_action`, `chk_successful_has_values`, `chk_failed_has_error` |
+| `credit_operations` | `chk_credit_operations_status`, `chk_credit_operations_type` |
+| `payment_credit_operations` | `chk_payment_credit_operations_status`, `chk_payment_credit_operations_type`, `chk_payment_credit_operations_attempts` |
+| `transactions` | `chk_transactions_original_only_refunds` |
+| `outbox_events`, `payment_outbox_events`, `credit_limit_outbox_events` | `chk_*_attempts` (1 c/u) |
+| `currencies` | `chk_currencies_code` |
+| `exchange_rates` | `chk_exchange_rates_pair`, `chk_exchange_rates_rate`, `chk_exchange_rates_validity` |
 
--- Transiciones fallidas recientes (últimos 30 días)
-v_recent_failed_transitions
+### **Triggers, Views y Functions**
 
--- Estadísticas de eventos
-v_event_statistics
-```
-
-### **Functions (8)**
-
-```sql
--- Trigger functions (6)
-update_cards_updated_at()
-update_credit_limits_updated_at()
-calculate_available_credit()
-reset_daily_limit()
-reset_monthly_limit()
-validate_state_transition()
-
--- Utility functions (2)
-get_card_lifecycle_history(p_card_id VARCHAR)
-count_transitions_by_period(p_start_date TIMESTAMP, p_end_date TIMESTAMP)
-```
+No hay. El schema solo define tablas, constraints e índices; la lógica está en los servicios.
 
 ---
 
@@ -491,7 +489,7 @@ count_transitions_by_period(p_start_date TIMESTAMP, p_end_date TIMESTAMP)
 docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\dt"
 ```
 
-**Output esperado:** 6 tablas
+**Output esperado:** 22 tablas
 
 #### **2. Ver todos los índices**
 
@@ -499,47 +497,29 @@ docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\dt"
 docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "\di"
 ```
 
-**Output esperado:** 56 índices
+**Output esperado:** 96 índices
 
 #### **3. Ver Foreign Keys**
 
 ```bash
 docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "
 SELECT
-    tc.table_name,
-    kcu.column_name,
-    ccu.table_name AS foreign_table_name,
-    tc.constraint_name
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
-WHERE tc.constraint_type = 'FOREIGN KEY'
-ORDER BY tc.table_name;
+    conrelid::regclass  AS table_name,
+    conname             AS constraint_name,
+    confrelid::regclass AS foreign_table_name
+FROM pg_constraint
+WHERE contype = 'f' AND connamespace = 'public'::regnamespace
+ORDER BY 1, 2;
 "
 ```
 
-**Output esperado:** 4 Foreign Keys
+**Output esperado:** 15 Foreign Keys
 
-#### **4. Ver Triggers**
-
-```bash
-docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "
-SELECT
-    trigger_name,
-    event_object_table AS table_name
-FROM information_schema.triggers
-WHERE trigger_schema = 'public'
-ORDER BY event_object_table;
-"
-```
-
-**Output esperado:** 6 triggers
-
-#### **5. Ver historial de Flyway**
+#### **4. Ver historial de Flyway**
 
 ```bash
 docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "
-SELECT version, description, success, installed_on
+SELECT version, description, success
 FROM flyway_schema_history
 ORDER BY installed_rank;
 "
@@ -548,20 +528,25 @@ ORDER BY installed_rank;
 **Output esperado:**
 
 ```
- version |          description           | success |     installed_on
----------+--------------------------------+---------+---------------------
- 0       | << Flyway Baseline >>          | t       | 2025-12-28 14:50:00
- 1       | create cards tables            | t       | 2025-12-28 14:50:01
- 2       | create credit limits tables    | t       | 2025-12-28 14:50:01
- 3       | create state transitions table | t       | 2025-12-28 14:50:01
+ version |               description               | success
+---------+-----------------------------------------+---------
+ 1       | create cards table                      | t
+ 2       | create credit limits table              | t
+ 3       | create history and audit tables         | t
+ 4       | create merchant tables                  | t
+ 5       | create transaction tables               | t
+ 6       | create credit operations tables         | t
+ 7       | create outbox tables                    | t
+ 8       | create card data processed events table | t
+ 9       | create currency tables                  | t
 ```
 
-#### **6. Resumen completo de objetos**
+#### **5. Resumen completo de objetos**
 
 ```bash
 docker exec -it card-db-postgres psql -U postgres -d card_management_db -c "
 SELECT 'Tables' AS object_type, COUNT(*)
-FROM information_schema.tables WHERE table_schema = 'public'
+FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
 UNION ALL
 SELECT 'Indexes', COUNT(*)
 FROM pg_indexes WHERE schemaname = 'public'
@@ -569,6 +554,9 @@ UNION ALL
 SELECT 'Foreign Keys', COUNT(*)
 FROM information_schema.table_constraints
 WHERE constraint_schema = 'public' AND constraint_type = 'FOREIGN KEY'
+UNION ALL
+SELECT 'Check Constraints', COUNT(*)
+FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype = 'c'
 UNION ALL
 SELECT 'Triggers', COUNT(*)
 FROM information_schema.triggers WHERE trigger_schema = 'public'
@@ -586,26 +574,26 @@ WHERE n.nspname = 'public';
 **Output esperado:**
 
 ```
-  object_type  | count
----------------+-------
- Tables        |     6
- Indexes       |    56
- Foreign Keys  |     4
- Triggers      |     6
- Views         |     3
- Functions     |     8
+    object_type    | count
+-------------------+-------
+ Tables            |    22
+ Indexes           |    96
+ Foreign Keys      |    15
+ Check Constraints |    25
+ Triggers          |     0
+ Views             |     0
+ Functions         |     0
 ```
 
 ### **Checklist de Validación**
 
-- [ ] 6 tablas creadas
-- [ ] 56 índices funcionando
-- [ ] 4 Foreign Keys activas
-- [ ] 6 triggers configurados
-- [ ] 3 views disponibles
-- [ ] 8 functions creadas
-- [ ] 3 migraciones exitosas (V1, V2, V3)
-- [ ] Flyway baseline aplicado
+- [ ] 22 tablas creadas
+- [ ] 96 índices
+- [ ] 15 Foreign Keys
+- [ ] 25 Check Constraints
+- [ ] 9 migraciones exitosas (V1 a V9)
+- [ ] `make validate` sin errores
+- [ ] `make seed-dev` carga sin errores
 - [ ] PostgreSQL 16 corriendo
 - [ ] PgAdmin accesible en http://localhost:5050
 
@@ -619,7 +607,7 @@ WHERE n.nspname = 'public';
 -- ✅ BUENAS PRÁCTICAS
 
 -- 1. Comentarios en español (para este proyecto)
-COMMENT ON TABLE cards IS 'Tarjetas de crédito y débito';
+COMMENT ON TABLE cards IS 'Tabla principal de tarjetas';
 
 -- 2. NOT NULL explícito
 CREATE TABLE cards (
@@ -628,13 +616,14 @@ CREATE TABLE cards (
 );
 
 -- 3. Constraints con nombre descriptivo
-CONSTRAINT chk_card_status CHECK (status IN ('ACTIVE', 'BLOCKED'));
+CONSTRAINT chk_status CHECK (status IN ('ACTIVE', 'BLOCKED'));
 
--- 4. Índices con prefijo idx_
-CREATE INDEX idx_cards_client_status ON cards(client_id, status);
+-- 4. Índices con prefijo idx_ (únicos con uq_)
+CREATE INDEX idx_cards_status ON cards(status) WHERE deleted = false;
 
--- 5. Foreign Keys con ON DELETE/UPDATE
-FOREIGN KEY (card_id) REFERENCES cards(id)
+-- 5. Foreign Keys con nombre fk_ y ON DELETE explícito
+CONSTRAINT fk_credit_limits_card
+    FOREIGN KEY (card_id) REFERENCES cards(id)
     ON DELETE CASCADE
     ON UPDATE CASCADE;
 
@@ -642,14 +631,7 @@ FOREIGN KEY (card_id) REFERENCES cards(id)
 CREATE TABLE IF NOT EXISTS cards (...);
 DROP TABLE IF EXISTS old_table CASCADE;
 
--- 7. Triggers con prefijo trigger_
-CREATE TRIGGER trigger_update_cards_updated_at ...
-
--- 8. Functions con snake_case
-CREATE FUNCTION update_cards_updated_at() ...
-
--- 9. Views con prefijo v_
-CREATE VIEW v_card_lifecycle_summary AS ...
+-- 7. Nombres en snake_case
 ```
 
 ### **Migraciones**
@@ -658,8 +640,8 @@ CREATE VIEW v_card_lifecycle_summary AS ...
    - Si una migración ya está aplicada, crear una nueva con `ALTER`
 
 2. **Nombres descriptivos**
-   - ✅ `V4__add_card_benefits_table.sql`
-   - ❌ `V4__changes.sql`
+   - ✅ `V10__add_card_benefits_table.sql`
+   - ❌ `V10__changes.sql`
 
 3. **Idempotencia**
    - Usar `IF NOT EXISTS` / `IF EXISTS`
@@ -667,11 +649,12 @@ CREATE VIEW v_card_lifecycle_summary AS ...
 
 4. **Rollback manual**
    - Flyway NO soporta rollback automático
-   - Documentar rollbacks en `docs/rollback_guide.md`
+   - Cada migración nueva que lo necesite lleva su script en `rollback/` (`R{n}__rollback_v{version}.sql`) y se documenta en `docs/rollback_guide.md`
 
 5. **Testing local**
    - Probar con `make migrate` antes de commit
    - Validar con `make validate`
+   - Si la migración cambia una tabla sembrada, actualizar el seed y probar `make seed-dev`
 
 6. **Evitar funciones no-inmutables en índices**
    - ❌ `WHERE transitioned_at > CURRENT_TIMESTAMP - INTERVAL '7 days'`
@@ -773,6 +756,17 @@ ports:
   - "5433:5432"  # Usar 5433 externamente
 ```
 
+### **Problema: "Validate failed: Migration checksum mismatch" / "Detected applied migration not resolved locally"**
+
+La base se creó con migraciones que ya no existen o cambiaron (por ejemplo, el historial anterior V1 a V21). En desarrollo, recrearla:
+
+```bash
+make down-volumes
+make up
+make migrate-docker
+make seed-dev   # opcional
+```
+
 ### **Problema: "Flyway migration failed"**
 
 ```bash
@@ -863,8 +857,8 @@ make migrate-docker
 
 ---
 
-**Última actualización:** 2026-11-14  
-**Versión:** 1.0.0  
+**Última actualización:** 2026-11-19  
+**Versión:** 2.0.0  
 **Mantenedor:** Database Team - Unisono  
 **Contributors:** Juan Tevez (Backend Lead)
 
