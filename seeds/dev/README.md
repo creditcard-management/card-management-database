@@ -11,7 +11,7 @@ Scripts SQL para poblar la base de datos con datos de prueba realistas.
 1. 001_test_cards.sql              (10 tarjetas + 5 auditorías)
 2. 002_test_credit_limits.sql      (4 límites + 8 históricos)
 3. 003_test_state_transitions.sql  (23 transiciones)
-4. 004_test_exchange_rates.sql     (cotizaciones USD/ARS y EUR/ARS; requiere V19)
+4. 004_test_exchange_rates.sql     (cotizaciones USD/ARS y EUR/ARS; requiere V9)
 ```
 
 Los archivos 001 a 003 corren en una transacción con `ON_ERROR_STOP`: si una sentencia falla, no se carga nada de ese archivo y `make seed-dev` corta con error. **No son re-ejecutables** (las claves son fijas): para volver a cargarlos, correr antes `make clean-seeds`. El 004 sí se puede repetir (saltea los pares que ya tienen cotizaciones).
@@ -117,4 +117,4 @@ EOF
 - 🔒 PINs y CVVs son **ficticios** y están encriptados
 - 📊 Datos realistas basados en casos de uso reales
 - 🔗 Respeta todas las Foreign Keys y constraints
-- 🧩 Los seeds siguen el schema actual (hasta V20). Si una migración cambia una tabla sembrada, hay que actualizar el seed: el `ON_ERROR_STOP` hace que el error se vea en vez de cargar datos a medias
+- 🧩 Los seeds siguen el schema actual (hasta V9). Si una migración cambia una tabla sembrada, hay que actualizar el seed: el `ON_ERROR_STOP` hace que el error se vea en vez de cargar datos a medias

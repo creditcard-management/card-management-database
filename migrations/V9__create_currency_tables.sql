@@ -1,6 +1,5 @@
 -- =============================================
--- Migration: V19
--- Date: 2026-11-15
+-- Migration: V9
 -- Description: currency catalog and exchange rates for card-currency
 -- =============================================
 

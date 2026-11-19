@@ -1,6 +1,6 @@
 -- =============================================
 -- Seeds: Test Exchange Rates (Development)
--- Description: Cotizaciones iniciales para card-currency (V19 carga USD y EUR sin cotización)
+-- Description: Cotizaciones iniciales para card-currency (V9 carga USD y EUR sin cotización)
 -- =============================================
 -- 1 base = rate quote. Cada par se cotiza en un solo sentido (X/ARS), como exige card-currency:
 -- ARS → USD/EUR se resuelve con la cotización inversa.

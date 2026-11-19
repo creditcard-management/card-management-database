@@ -1,6 +1,5 @@
 -- =============================================
--- Migration: V16
--- Date: 2026-11-14
+-- Migration: V8
 -- Description: inbox of events already processed by card-data (idempotent consumers)
 -- =============================================
 
