@@ -4,6 +4,10 @@
 # Description: Comandos útiles para gestión de BD
 # =============================================
 
+# Las recetas usan sintaxis de bash (read -n, [[ ]]): con /bin/sh (dash en Ubuntu) las
+# confirmaciones de down-volumes, clean y drop-db siempre cancelaban.
+SHELL := /bin/bash
+
 # Variables
 DB_NAME := card_management_db
 DB_USER := postgres
@@ -25,10 +29,11 @@ FLYWAY := flyway
 FLYWAY_LOCATIONS := filesystem:./migrations
 
 # Colors para output
-GREEN := \033[0;32m
-YELLOW := \033[0;33m
-RED := \033[0;31m
-NC := \033[0m # No Color
+# Caracteres ESC reales: el echo de bash no interpreta \033 (el de dash sí)
+GREEN := $(shell printf '\033[0;32m')
+YELLOW := $(shell printf '\033[0;33m')
+RED := $(shell printf '\033[0;31m')
+NC := $(shell printf '\033[0m')# No Color
 
 # =============================================
 # DEFAULT TARGET
@@ -116,14 +121,15 @@ migrate: ## Ejecutar migraciones pendientes
 		$(FLYWAY) -url=$(DB_URL) -user=$(DB_USER) -password=$(DB_PASSWORD) \
 			-locations=$(FLYWAY_LOCATIONS) migrate; \
 	else \
-		$(COMPOSE) up flyway; \
+		$(COMPOSE) run --rm flyway; \
 	fi
 	@echo "$(GREEN)✅ Migraciones completadas$(NC)"
 
 .PHONY: migrate-docker
 migrate-docker: ## Ejecutar migraciones usando Docker
 	@echo "$(GREEN)Ejecutando migraciones con Docker...$(NC)"
-	$(COMPOSE) up flyway
+	@# run (no up): devuelve el exit code de Flyway, así un fallo corta make en vez de seguir al seed
+	$(COMPOSE) run --rm flyway
 	@echo "$(GREEN)✅ Migraciones completadas$(NC)"
 
 .PHONY: info
